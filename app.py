@@ -1,63 +1,103 @@
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import io
-import base64
+import zipfile
+import os
 
-st.set_page_config(page_title="Add Scale Bar to Image", layout="centered")
-st.title("🧭 Add Scale Bar to Image")
+# --- SCALE MAP ---
+PIXELS_PER_MICRON = {
+    "5x": 0.255,
+    "10x": 0.515,
+    "20x": 1.0325,
+    "40x": 2.0425,
+    "63x": 3.27,
+    "100x": 5.16
+}
 
-uploaded_file = st.file_uploader("Upload an image (PNG or JPG)", type=["png", "jpg", "jpeg"])
+st.title("🔬 Microscope Image Scale Bar Adder")
 
-if uploaded_file:
-    # Load image
-    img = Image.open(uploaded_file).convert("RGB")
-    img_width, img_height = img.size
+st.markdown("""
+Upload one or more microscope images, choose the magnification,
+and automatically add a scale bar to each image.
+""")
 
-    st.image(img, caption="Original Image", use_container_width=True)
-    st.divider()
+# --- SIDEBAR SETTINGS ---
+st.sidebar.header("Settings")
+magnification = st.sidebar.selectbox("Select magnification", list(PIXELS_PER_MICRON.keys()))
+scale_length_um = st.sidebar.number_input("Scale bar length (µm)", min_value=1, max_value=200, value=50)
+bar_height_px = st.sidebar.number_input("Scale bar thickness (pixels)", min_value=1, max_value=50, value=8)
+margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=1, max_value=200, value=50)
 
-    # --- Scale bar controls ---
-    st.subheader("Scale Bar Settings")
-    scale_length = st.number_input("Scale bar length (µm)", min_value=1, max_value=10000, value=10)
-    bar_px = st.number_input("Scale bar width in pixels", min_value=1, max_value=img_width, value=100)
-    bar_height = st.slider("Scale bar thickness (px)", 1, 50, 8)
+# --- FILE UPLOAD ---
+uploaded_files = st.file_uploader("Upload image(s)", type=["jpg", "jpeg", "png", "tif", "tiff"], accept_multiple_files=True)
 
-    # Position controls
-    x_offset = st.number_input("X position (px from left edge)", min_value=0, max_value=img_width, value=50)
-    y_offset = st.number_input("Y position (px from bottom edge)", min_value=0, max_value=img_height, value=50)
+if uploaded_files:
+    st.write(f"### {len(uploaded_files)} file(s) uploaded")
 
-    bar_color = st.color_picker("Bar color", "#FFFFFF")
-    text_color = st.color_picker("Label color", "#FFFFFF")
+    annotated_images = []
 
-    draw = ImageDraw.Draw(img)
+    for uploaded_file in uploaded_files:
+        # Load image
+        img = Image.open(uploaded_file).convert("RGB")
+        draw = ImageDraw.Draw(img)
 
-    # Convert bottom-based coordinate to image coordinate (top-left origin)
-    bar_x = x_offset
-    bar_y = img_height - y_offset - bar_height
+        # Scale calculation
+        px_per_um = PIXELS_PER_MICRON[magnification]
+        bar_length_px = int(px_per_um * scale_length_um)
 
-    # Draw scale bar
-    draw.rectangle([(bar_x, bar_y), (bar_x + bar_px, bar_y + bar_height)], fill=bar_color)
+        # Image dimensions
+        w, h = img.size
 
-    # Label
-    font_size = 24
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except:
-        font = ImageFont.load_default()
+        # Coordinates for the scale bar (bottom-right)
+        x1 = w - margin_px - bar_length_px
+        y1 = h - margin_px - bar_height_px
+        x2 = w - margin_px
+        y2 = h - margin_px
 
-    text = f"{scale_length} µm"
-    text_width, text_height = draw.textsize(text, font=font)
-    text_x = bar_x + (bar_px - text_width) / 2
-    text_y = bar_y - text_height - 5
-    draw.text((text_x, text_y), text, fill=text_color, font=font)
+        # Draw scale bar
+        draw.rectangle([x1, y1, x2, y2], fill="white")
 
-    st.image(img, caption="Image with Scale Bar", use_container_width=True)
+               # Optional label (Unicode-safe)
+        try:
+            # DejaVuSans is bundled with Pillow and supports µ, Ω, α, β, etc.
+            font = ImageFont.truetype("DejaVuSans.ttf", 20)
+        except:
+            font = ImageFont.load_default()
 
-    # --- Download modified image ---
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    href = f'<a href="data:file/png;base64,{b64}" download="image_with_scale_bar.png">📥 Download Image with Scale Bar</a>'
-    st.markdown(href, unsafe_allow_html=True)
-else:
-    st.info("👆 Upload an image above to begin.")
+        text = f"{scale_length_um} µm"
+
+        # Measure text size (modern Pillow)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+        # Draw label centered above the scale bar
+        draw.text((x1 + (bar_length_px - tw) / 2, y1 - th - 5), text, fill="white", font=font)
+
+        # Save annotated image to memory
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        buf.seek(0)
+        annotated_images.append((uploaded_file.name, buf))
+
+        st.image(img, caption=f"{uploaded_file.name} ({magnification}, {scale_length_um} µm bar)", use_column_width=True)
+        st.download_button(
+            label=f"⬇️ Download {uploaded_file.name}",
+            data=buf,
+            file_name=f"{os.path.splitext(uploaded_file.name)[0]}_scalebar.jpg",
+            mime="image/jpeg"
+        )
+
+    # --- BULK DOWNLOAD ZIP ---
+    if len(annotated_images) > 1:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for name, buf in annotated_images:
+                zipf.writestr(f"{os.path.splitext(name)[0]}_scalebar.jpg", buf.getvalue())
+        zip_buffer.seek(0)
+
+        st.download_button(
+            label="⬇️ Download All as ZIP",
+            data=zip_buffer,
+            file_name="annotated_images.zip",
+            mime="application/zip"
+        )

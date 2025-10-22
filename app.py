@@ -1,103 +1,31 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
-import io
-import zipfile
-import os
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
-# --- SCALE MAP ---
-PIXELS_PER_MICRON = {
-    "5x": 0.255,
-    "10x": 0.515,
-    "20x": 1.0325,
-    "40x": 2.0425,
-    "63x": 3.27,
-    "100x": 5.16
-}
+# --- Example image or plot dimensions (in pixels) ---
+image_width, image_height = 800, 600
 
-st.title("🔬 Microscope Image Scale Bar Adder")
+st.subheader("Scale Bar Settings")
+scale_length = st.number_input("Scale bar length (µm)", min_value=1, max_value=1000, value=10)
+x_offset = st.number_input("X position (px from left)", min_value=0, max_value=image_width, value=50, step=1)
+y_offset = st.number_input("Y position (px from bottom)", min_value=0, max_value=image_height, value=50, step=1)
 
-st.markdown("""
-Upload one or more microscope images, choose the magnification,
-and automatically add a scale bar to each image.
-""")
+# --- Create figure ---
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_xlim(0, image_width)
+ax.set_ylim(0, image_height)
+ax.set_facecolor("black")
 
-# --- SIDEBAR SETTINGS ---
-st.sidebar.header("Settings")
-magnification = st.sidebar.selectbox("Select magnification", list(PIXELS_PER_MICRON.keys()))
-scale_length_um = st.sidebar.number_input("Scale bar length (µm)", min_value=1, max_value=200, value=50)
-bar_height_px = st.sidebar.number_input("Scale bar thickness (pixels)", min_value=1, max_value=50, value=8)
-margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=1, max_value=200, value=50)
+# --- Draw scale bar ---
+scale_bar_width = 100  # in pixels, for visual example
+rect = patches.Rectangle(
+    (x_offset, y_offset), scale_bar_width, 5, color="white"
+)
+ax.add_patch(rect)
 
-# --- FILE UPLOAD ---
-uploaded_files = st.file_uploader("Upload image(s)", type=["jpg", "jpeg", "png", "tif", "tiff"], accept_multiple_files=True)
+# --- Label (optional) ---
+ax.text(x_offset + scale_bar_width / 2, y_offset + 15, f"{scale_length} µm",
+        color="white", ha="center", va="bottom", fontsize=12)
 
-if uploaded_files:
-    st.write(f"### {len(uploaded_files)} file(s) uploaded")
-
-    annotated_images = []
-
-    for uploaded_file in uploaded_files:
-        # Load image
-        img = Image.open(uploaded_file).convert("RGB")
-        draw = ImageDraw.Draw(img)
-
-        # Scale calculation
-        px_per_um = PIXELS_PER_MICRON[magnification]
-        bar_length_px = int(px_per_um * scale_length_um)
-
-        # Image dimensions
-        w, h = img.size
-
-        # Coordinates for the scale bar (bottom-right)
-        x1 = w - margin_px - bar_length_px
-        y1 = h - margin_px - bar_height_px
-        x2 = w - margin_px
-        y2 = h - margin_px
-
-        # Draw scale bar
-        draw.rectangle([x1, y1, x2, y2], fill="white")
-
-               # Optional label (Unicode-safe)
-        try:
-            # DejaVuSans is bundled with Pillow and supports µ, Ω, α, β, etc.
-            font = ImageFont.truetype("DejaVuSans.ttf", 20)
-        except:
-            font = ImageFont.load_default()
-
-        text = f"{scale_length_um} µm"
-
-        # Measure text size (modern Pillow)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-        # Draw label centered above the scale bar
-        draw.text((x1 + (bar_length_px - tw) / 2, y1 - th - 5), text, fill="white", font=font)
-
-        # Save annotated image to memory
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG")
-        buf.seek(0)
-        annotated_images.append((uploaded_file.name, buf))
-
-        st.image(img, caption=f"{uploaded_file.name} ({magnification}, {scale_length_um} µm bar)", use_column_width=True)
-        st.download_button(
-            label=f"⬇️ Download {uploaded_file.name}",
-            data=buf,
-            file_name=f"{os.path.splitext(uploaded_file.name)[0]}_scalebar.jpg",
-            mime="image/jpeg"
-        )
-
-    # --- BULK DOWNLOAD ZIP ---
-    if len(annotated_images) > 1:
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for name, buf in annotated_images:
-                zipf.writestr(f"{os.path.splitext(name)[0]}_scalebar.jpg", buf.getvalue())
-        zip_buffer.seek(0)
-
-        st.download_button(
-            label="⬇️ Download All as ZIP",
-            data=zip_buffer,
-            file_name="annotated_images.zip",
-            mime="application/zip"
-        )
+ax.invert_yaxis()  # if working in image coordinate space
+st.pyplot(fig)

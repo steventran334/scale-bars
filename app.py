@@ -62,8 +62,11 @@ if uploaded_files:
             font = ImageFont.truetype("arial.ttf", 20)
         except:
             font = ImageFont.load_default()
+
         text = f"{scale_length_um} µm"
-        tw, th = draw.textsize(text, font=font)
+        # Use textbbox instead of textsize
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         draw.text((x1 + (bar_length_px - tw) / 2, y1 - th - 5), text, fill="white", font=font)
 
         # Save annotated image to memory

@@ -24,9 +24,9 @@ and automatically add a scale bar to each image.
 # --- SIDEBAR SETTINGS ---
 st.sidebar.header("Settings")
 magnification = st.sidebar.selectbox("Select magnification", list(PIXELS_PER_MICRON.keys()))
-scale_length_um = st.sidebar.number_input("Scale bar length (µm)", min_value=5, max_value=200, value=50)
-bar_height_px = st.sidebar.number_input("Scale bar thickness (pixels)", min_value=2, max_value=50, value=8)
-margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=5, max_value=200, value=50)
+scale_length_um = st.sidebar.number_input("Scale bar length (µm)", min_value=1, max_value=200, value=50)
+bar_height_px = st.sidebar.number_input("Scale bar thickness (pixels)", min_value=1, max_value=50, value=8)
+margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=1, max_value=200, value=50)
 
 # --- FILE UPLOAD ---
 uploaded_files = st.file_uploader("Upload image(s)", type=["jpg", "jpeg", "png", "tif", "tiff"], accept_multiple_files=True)

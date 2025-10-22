@@ -57,16 +57,20 @@ if uploaded_files:
         # Draw scale bar
         draw.rectangle([x1, y1, x2, y2], fill="white")
 
-        # Optional label
+               # Optional label (Unicode-safe)
         try:
-            font = ImageFont.truetype("arial.ttf", 20)
+            # DejaVuSans is bundled with Pillow and supports µ, Ω, α, β, etc.
+            font = ImageFont.truetype("DejaVuSans.ttf", 20)
         except:
             font = ImageFont.load_default()
 
         text = f"{scale_length_um} µm"
-        # Use textbbox instead of textsize
+
+        # Measure text size (modern Pillow)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+        # Draw label centered above the scale bar
         draw.text((x1 + (bar_length_px - tw) / 2, y1 - th - 5), text, fill="white", font=font)
 
         # Save annotated image to memory

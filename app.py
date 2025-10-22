@@ -26,7 +26,19 @@ st.sidebar.header("Settings")
 magnification = st.sidebar.selectbox("Select magnification", list(PIXELS_PER_MICRON.keys()))
 scale_length_um = st.sidebar.number_input("Scale bar length (µm)", min_value=1, max_value=200, value=50)
 bar_height_px = st.sidebar.number_input("Scale bar thickness (pixels)", min_value=1, max_value=50, value=8)
-margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=1, max_value=1000, value=50)
+
+# --- POSITIONING MODE ---
+position_mode = st.sidebar.radio(
+    "Scale bar positioning mode:",
+    ("Margin from bottom-right", "Manual X/Y position")
+)
+
+if position_mode == "Margin from bottom-right":
+    margin_px = st.sidebar.number_input("Margin from edges (pixels)", min_value=1, max_value=1000, value=50)
+else:
+    st.sidebar.markdown("#### Manual X/Y offset (from top-left corner)")
+    x_offset = st.sidebar.number_input("X offset (pixels)", min_value=0, max_value=5000, value=50)
+    y_offset = st.sidebar.number_input("Y offset (pixels)", min_value=0, max_value=5000, value=50)
 
 # --- FILE UPLOAD ---
 uploaded_files = st.file_uploader("Upload image(s)", type=["jpg", "jpeg", "png", "tif", "tiff"], accept_multiple_files=True)
@@ -44,36 +56,35 @@ if uploaded_files:
         # Scale calculation
         px_per_um = PIXELS_PER_MICRON[magnification]
         bar_length_px = int(px_per_um * scale_length_um)
-
-        # Image dimensions
         w, h = img.size
 
-        # Coordinates for the scale bar (bottom-right)
-        x1 = w - margin_px - bar_length_px
-        y1 = h - margin_px - bar_height_px
-        x2 = w - margin_px
-        y2 = h - margin_px
+        # --- Determine coordinates based on mode ---
+        if position_mode == "Margin from bottom-right":
+            x1 = w - margin_px - bar_length_px
+            y1 = h - margin_px - bar_height_px
+        else:  # Manual X/Y
+            x1 = x_offset
+            y1 = y_offset
+
+        x2 = x1 + bar_length_px
+        y2 = y1 + bar_height_px
 
         # Draw scale bar
         draw.rectangle([x1, y1, x2, y2], fill="white")
 
-               # Optional label (Unicode-safe)
+        # Label (Unicode-safe)
         try:
-            # DejaVuSans is bundled with Pillow and supports µ, Ω, α, β, etc.
             font = ImageFont.truetype("DejaVuSans.ttf", 20)
         except:
             font = ImageFont.load_default()
 
         text = f"{scale_length_um} µm"
-
-        # Measure text size (modern Pillow)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        # Draw label centered above the scale bar
         draw.text((x1 + (bar_length_px - tw) / 2, y1 - th - 5), text, fill="white", font=font)
 
-        # Save annotated image to memory
+        # Save annotated image
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
         buf.seek(0)
